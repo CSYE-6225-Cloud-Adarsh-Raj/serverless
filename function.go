@@ -88,7 +88,7 @@ func sendEmail(email, token string) error {
 	defer db.Close()
 
 	from := mail.NewEmail("Admin@rajadarsh.me", "no-reply@rajadarsh.me")
-	to := mail.NewEmail("User", email)
+	to := mail.NewEmail("Webapp User", email)
 	templateID := "d-055a9dac08a9442e8a94283aa22548d7"
 
 	message := mail.NewV3Mail()
@@ -98,6 +98,7 @@ func sendEmail(email, token string) error {
 	p := mail.NewPersonalization()
 	p.AddTos(to)
 	p.SetDynamicTemplateData("verificationLink", verificationURL(token))
+	p.SetDynamicTemplateData("contactLink", "mailto:support@rajadarsh.me")
 	message.AddPersonalizations(p)
 
 	client := sendgrid.NewSendClient(os.Getenv("SENDGRID_API_KEY"))
