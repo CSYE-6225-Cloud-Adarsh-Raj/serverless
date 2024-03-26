@@ -6,16 +6,25 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
 	"cloud.google.com/go/functions/metadata"
+	_ "github.com/lib/pq"
 	"github.com/sendgrid/sendgrid-go"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
-
-	_ "github.com/lib/pq"
+	"github.com/sirupsen/logrus"
 )
+
+// Initialize a logrus logger
+var log = logrus.New()
+
+func init() {
+	// Set the log output format to JSON
+	log.SetFormatter(&logrus.JSONFormatter{})
+	// You can also set the Output to any `io.Writer` such as a file
+	log.SetOutput(os.Stdout)
+}
 
 // PubSubMessage is the payload of a Pub/Sub event.
 type PubSubMessage struct {
@@ -35,9 +44,7 @@ func getDatabaseURL() string {
 	dbPassword := os.Getenv("DB_PASSWORD")
 	sslMode := "disable"
 
-	// Construct the connection string
 	dbURL := fmt.Sprintf("host=%s user=%s dbname=%s sslmode=%s password=%s", dbHost, dbUser, dbName, sslMode, dbPassword)
-
 	return dbURL
 }
 
@@ -46,69 +53,74 @@ func connectToDB() (*sql.DB, error) {
 	return sql.Open("postgres", dbURL)
 }
 
-// SendVerificationEmail sends a verification email to the user.
 func SendVerificationEmail(ctx context.Context, m PubSubMessage) error {
 	meta, err := metadata.FromContext(ctx)
 	if err != nil {
-		log.Printf("metadata.FromContext: %v", err)
+		log.WithError(err).Error("metadata.FromContext failed")
 		return err
 	}
-	log.Printf("Function triggered by change to: %v", meta.Resource)
-
-	log.Printf("Received data: %s", string(m.Data))
+	log.WithField("resource", meta.Resource).Info("Function triggered by change to resource")
 
 	data, err := base64.StdEncoding.DecodeString(string(m.Data))
 	if err != nil {
-		log.Printf("Assuming data is not base64 encoded due to error: %v", err)
+		log.WithError(err).Warn("Assuming data is not base64 encoded")
 		data = m.Data
+	} else {
+		log.WithField("data", string(data)).Info("Received base64 encoded data")
 	}
 
 	var vMessage VerificationMessage
 	err = json.Unmarshal(data, &vMessage)
 	if err != nil {
-		log.Printf("json.Unmarshal: %v", err)
+		log.WithError(err).Error("json.Unmarshal failed")
 		return err
 	}
 
 	return sendEmail(vMessage.Email, vMessage.VerificationToken)
 }
 
-// sendEmail sends an email using the SendGrid API.
 func sendEmail(email, token string) error {
-	// Connect to the database
 	db, err := connectToDB()
 	if err != nil {
-		log.Printf("Failed to connect to database: %v", err)
+		log.WithError(err).Error("Failed to connect to database")
 		return err
 	}
 	defer db.Close()
 
-	from := mail.NewEmail("Example User", "adarshrajneu@gmail.com")
-	subject := "Verify Your Email Address"
-	to := mail.NewEmail("Example User", email)
-	plainTextContent := fmt.Sprintf("Please verify your email address by clicking on the link: %s", verificationURL(token))
-	htmlContent := fmt.Sprintf("Please verify your email address by clicking on the link: <a href=\"%s\">%s</a>", verificationURL(token), verificationURL(token))
-	message := mail.NewSingleEmail(from, subject, to, plainTextContent, htmlContent)
+	from := mail.NewEmail("Admin@rajadarsh.me", "no-reply@rajadarsh.me")
+	to := mail.NewEmail("User", email)
+	templateID := "d-055a9dac08a9442e8a94283aa22548d7"
+
+	message := mail.NewV3Mail()
+	message.SetFrom(from)
+	message.SetTemplateID(templateID)
+
+	p := mail.NewPersonalization()
+	p.AddTos(to)
+	p.SetDynamicTemplateData("verificationLink", verificationURL(token))
+	message.AddPersonalizations(p)
 
 	client := sendgrid.NewSendClient(os.Getenv("SENDGRID_API_KEY"))
 	response, err := client.Send(message)
 	if err != nil {
-		log.Printf("Failed to send email: %v", err)
+		log.WithError(err).Error("Failed to send email")
 		return err
 	} else {
-		log.Printf("Email sent: %v", response.StatusCode)
-		_, err = db.Exec("INSERT INTO email_verification (email, uuid, time_sent) VALUES ($1, $2, $3)", email, token, time.Now())
+		log.WithFields(logrus.Fields{
+			"statusCode": response.StatusCode,
+			"body":       response.Body,
+		}).Info("Email sent successfully")
+		_, err = db.Exec("INSERT INTO email_verifications (email, uuid, time_sent) VALUES ($1, $2, $3)", email, token, time.Now())
 		if err != nil {
-			log.Printf("Failed to insert email verification record: %v", err)
+			log.WithError(err).Error("Failed to insert email verification record")
 			return err
 		}
-
-		log.Printf("Email verification record inserted successfully")
 	}
+
+	log.Info("Email verification record inserted successfully")
 	return nil
 }
 
-// verificationURL constructs the verification URL.
 func verificationURL(token string) string {
-	return fmt.Sprintf("https://rajadarsh.me/verify?token=%s", token)
+	return fmt.Sprintf("http://rajadarsh.me:8080/verify?token=%s", token)
 }
