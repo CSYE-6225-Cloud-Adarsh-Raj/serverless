@@ -123,5 +123,5 @@ func sendEmail(email, token string) error {
 }
 
 func verificationURL(token string) string {
-	return fmt.Sprintf("http://rajadarsh.me:8080/verify?token=%s", token)
+	return fmt.Sprintf("http://rajadarsh.me/verify?token=%s", token)
 }
