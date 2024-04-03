@@ -111,9 +111,10 @@ func sendEmail(email, token string) error {
 			"statusCode": response.StatusCode,
 			"body":       response.Body,
 		}).Info("Email sent successfully")
-		_, err = db.Exec("INSERT INTO email_verifications (email, uuid, time_sent) VALUES ($1, $2, $3)", email, token, time.Now())
+		expiryTime := time.Now().Add(120 * time.Second)
+		_, err = db.Exec("INSERT INTO email_verifications (email, uuid, expiry_time) VALUES ($1, $2, $3)", email, token, expiryTime)
 		if err != nil {
-			log.WithError(err).Error("Failed to insert email verification record")
+			log.WithError(err).Error("Failed to insert email verification record with expiry time")
 			return err
 		}
 	}
@@ -123,5 +124,6 @@ func sendEmail(email, token string) error {
 }
 
 func verificationURL(token string) string {
-	return fmt.Sprintf("http://rajadarsh.me/verify?token=%s", token)
+	// return fmt.Sprintf("http://rajadarsh.me:8080/verify?token=%s", token)
+	return fmt.Sprintf("https://rajadarsh.me/verify?token=%s", token)
 }
