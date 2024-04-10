@@ -89,7 +89,7 @@ func sendEmail(email, token string) error {
 
 	from := mail.NewEmail("Admin@rajadarsh.me", "no-reply@rajadarsh.me")
 	to := mail.NewEmail("Webapp User", email)
-	templateID := "d-055a9dac08a9442e8a94283aa22548d7"
+	templateID := os.Getenv("TEMPLATE_ID")
 
 	message := mail.NewV3Mail()
 	message.SetFrom(from)
@@ -123,7 +123,16 @@ func sendEmail(email, token string) error {
 	return nil
 }
 
+// func verificationURL(token string) string {
+// 	// return fmt.Sprintf("http://rajadarsh.me:8080/verify?token=%s", token)
+// 	return fmt.Sprintf("https://rajadarsh.me/verify?token=%s", token)
+// }
+
 func verificationURL(token string) string {
-	// return fmt.Sprintf("http://rajadarsh.me:8080/verify?token=%s", token)
-	return fmt.Sprintf("https://rajadarsh.me/verify?token=%s", token)
+	baseUrl := os.Getenv("VERIFICATION_URL")
+	// if baseUrl == "" {
+	//     log.Warn("VERIFICATION_URL not set, using default")
+	//     baseUrl = "https://rajadarsh.me/verify" // Default value if not set in env
+	// }
+	return fmt.Sprintf("%s?token=%s", baseUrl, token)
 }
